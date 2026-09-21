@@ -1,0 +1,4 @@
+method,model,rho,compression_ratio_removed_pct,dense,corpus,ppl,ppl_tokens,realised_linear_ratio,realised_total_ratio,compress_seconds,source
+basis_sharing,facebook/opt-125m,0.6,40,False,c4,165.92614945177112,524032,0.7244380346130893,1.0364501569858713,120.43295727402437,/home/xuy280/Desktop/ICLR submission for ARKS/3 baseline/rehearsal/Basis-sharing/local/runs/basis_sharing/opt-125m_rho60.json
+basis_sharing,facebook/opt-125m,0.6,40,False,ptb,436.2725252471466,96209,0.7244380346130893,1.0364501569858713,120.43295727402437,/home/xuy280/Desktop/ICLR submission for ARKS/3 baseline/rehearsal/Basis-sharing/local/runs/basis_sharing/opt-125m_rho60.json
+basis_sharing,facebook/opt-125m,0.6,40,False,wikitext2,76.49338534829226,286580,0.7244380346130893,1.0364501569858713,120.43295727402437,/home/xuy280/Desktop/ICLR submission for ARKS/3 baseline/rehearsal/Basis-sharing/local/runs/basis_sharing/opt-125m_rho60.json

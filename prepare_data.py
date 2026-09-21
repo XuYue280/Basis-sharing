@@ -1,3 +1,6 @@
+# num_proc: the shipped value of 4 spawns worker processes that get OOM-killed
+# inside a Slurm cgroup ("One of the subprocesses has abruptly died during map
+# operation"). Default to 1; override with BS_MAP_PROCS if memory allows.
 from functools import partial
 from datasets import load_dataset
 from transformers import DataCollatorForLanguageModeling
@@ -47,13 +50,13 @@ def prep_wikitext_2_raw_v1(context_length, tokenizer, dataset_cache_dir=None):
                                    dataset_cache_dir=dataset_cache_dir)
     test_raw_dataset = load_dataset("wikitext", "wikitext-2-raw-v1", split="test", dataset_cache_dir=dataset_cache_dir)
     func = partial(tokenize_func, tokenizer=tokenizer, content="text")
-    tokenized_train = train_raw_dataset.map(func, num_proc=4, batched=True, remove_columns="text")
-    tokenized_val = val_raw_dataset.map(func, num_proc=4, batched=True, remove_columns="text")
+    tokenized_train = train_raw_dataset.map(func, num_proc=int(__import__('os').environ.get('BS_MAP_PROCS', '1')), batched=True, remove_columns="text")
+    tokenized_val = val_raw_dataset.map(func, num_proc=int(__import__('os').environ.get('BS_MAP_PROCS', '1')), batched=True, remove_columns="text")
     tokenized_test = tokenizer("\n\n".join(test_raw_dataset["text"]), return_tensors="pt")
 
     func = partial(group_text, context_length=context_length)
-    train_dataset = tokenized_train.map(func, num_proc=4, batch_size=1024, batched=True)
-    val_dataset = tokenized_val.map(func, num_proc=4, batch_size=1024, batched=True)
+    train_dataset = tokenized_train.map(func, num_proc=int(__import__('os').environ.get('BS_MAP_PROCS', '1')), batch_size=1024, batched=True)
+    val_dataset = tokenized_val.map(func, num_proc=int(__import__('os').environ.get('BS_MAP_PROCS', '1')), batch_size=1024, batched=True)
     data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False, return_tensors="pt")
     return train_dataset, val_dataset, tokenized_test, data_collator
 
@@ -67,13 +70,13 @@ def prep_ptb(context_length, tokenizer, dataset_cache_dir=None):
     test_raw_dataset = load_dataset("ptb_text_only", "penn_treebank", split='test',
                                     dataset_cache_dir=dataset_cache_dir)
     func = partial(tokenize_func, tokenizer=tokenizer, content="sentence")
-    tokenized_train_data = train_raw_dataset.map(func, num_proc=4, batched=True, remove_columns="sentence")
-    tokenized_val_data = val_raw_dataset.map(func, num_proc=4, batched=True, remove_columns="sentence")
+    tokenized_train_data = train_raw_dataset.map(func, num_proc=int(__import__('os').environ.get('BS_MAP_PROCS', '1')), batched=True, remove_columns="sentence")
+    tokenized_val_data = val_raw_dataset.map(func, num_proc=int(__import__('os').environ.get('BS_MAP_PROCS', '1')), batched=True, remove_columns="sentence")
     tokenized_test_data = tokenizer("\n\n".join(test_raw_dataset['sentence']), return_tensors="pt")
 
     func = partial(group_text, context_length=context_length)
-    train_dataset = tokenized_train_data.map(func, num_proc=4, batch_size=1024, batched=True)
-    val_dataset = tokenized_val_data.map(func, num_proc=4, batch_size=1024, batched=True)
+    train_dataset = tokenized_train_data.map(func, num_proc=int(__import__('os').environ.get('BS_MAP_PROCS', '1')), batch_size=1024, batched=True)
+    val_dataset = tokenized_val_data.map(func, num_proc=int(__import__('os').environ.get('BS_MAP_PROCS', '1')), batch_size=1024, batched=True)
     data_collator = DataCollatorForLanguageModeling(tokenizer, mlm=False, return_tensors="pt")
     return train_dataset, val_dataset, tokenized_test_data, data_collator
 

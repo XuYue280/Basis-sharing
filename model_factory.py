@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data import Subset
 from accelerate import load_checkpoint_and_dispatch
 
-from config import ShareConfig
+from config import ShareConfig, derive_weight_info
 from utils import match_state_dict
 from calib import Calib
 from prepare_data import prepare_data
@@ -57,9 +57,10 @@ def do_update_model(config, model, dataset, tokenizer, data_collator):
             Calib.build_update_dataset(model, dataloader, basis_name, config.model_type, config.update_calib_path)
 
         model_config = model.config
-        short_model_name = ShareConfig.name_map[config.model_name]
-
         names = config.share_part + config.private_part
+        weight_info = derive_weight_info(
+            std_model, [getattr(config, n + "_name") for n in names]
+        )
         for name in names:
             print("Update {}".format(name))
             model = update_model(std_model=std_model,
@@ -67,9 +68,7 @@ def do_update_model(config, model, dataset, tokenizer, data_collator):
                                  model_type=config.model_type,
                                  groups=getattr(model_config, name + "_groups"),
                                  name=getattr(config, name + "_name"),
-                                 step=
-                                 ShareConfig.weight_info[short_model_name][getattr(config, name + "_name")][
-                                     1],
+                                 step=weight_info[getattr(config, name + "_name")][1],
                                  num_basis=getattr(model_config, "num_basis_" + name),
                                  basis_name=name + "_basis",
                                  calib_path=config.update_calib_path,
@@ -101,15 +100,33 @@ def create_model(config):
             raise ValueError
 
     else:
-        if config.model_type == "llama2":
-            tokenizer = LlamaTokenizer.from_pretrained(config.model_name)
-        else:
-            tokenizer = AutoTokenizer.from_pretrained(config.model_name)
+        # LlamaTokenizer is the SLOW sentencepiece class and needs a
+        # tokenizer.model file. Llama-3.1 ships a tiktoken-style BPE with only
+        # tokenizer.json, so vocab_file is None and sentencepiece raises
+        # "TypeError: not a string". AutoTokenizer returns the identical
+        # PreTrainedTokenizerFast for the Llama-1/2 checkpoints upstream targeted,
+        # so this is inert for them.
+        tokenizer = AutoTokenizer.from_pretrained(config.model_name)
+        # Upstream's line, kept VERBATIM: on OPT it resolves "[PAD]" to id 2, and
+        # the validated opt-125m run (76.4902/436.3088/165.9375) depends on that.
         tokenizer.pad_token = "[PAD]"
+        # ...but "[PAD]" is absent from Llama-3.1's vocab and it has no unk token,
+        # so pad_token_id comes back None and DataCollatorForLanguageModeling
+        # raises when it tries to pad. Repair only in that case, leaving every
+        # checkpoint where the upstream line works untouched.
+        if tokenizer.pad_token_id is None:
+            tokenizer.pad_token = tokenizer.eos_token
         print("Start create model!")
         model_config = AutoConfig.from_pretrained(config.model_name)
         model_config.use_cache = False
-        if config.model_name == "jeffwan/llama-30b-hf":
+        # Upstream hardcodes fp16 for exactly one checkpoint and lets every other
+        # model default to fp32. opt-30b in fp32 is ~120 GB and cannot be placed
+        # on one 80GB H100 at all, so BS_TORCH_DTYPE lets the caller request fp16
+        # for the models that need it. The default is unset -> fp32, so every
+        # model that already fits (opt-125m, opt-6.7b, opt-13b, Llama-3.1-8B)
+        # keeps the exact dtype its validated/running numbers were produced with.
+        _dtype_env = os.environ.get("BS_TORCH_DTYPE", "")
+        if config.model_name == "jeffwan/llama-30b-hf" or _dtype_env == "float16":
             std_model = AutoModelForCausalLM.from_pretrained(config.model_name, device_map="auto",
                                                              torch_dtype=torch.float16)
         else:
@@ -139,13 +156,20 @@ def create_model(config):
             Calib.build_calibration_dataset(std_model, dataloader, calib_names, config.model_type, config.calib_path)
             print("Calib build done!")
 
-        short_model_name = ShareConfig.name_map[config.model_name]
+        # Shapes are read off std_model rather than looked up in
+        # ShareConfig.weight_info, whose static table covers only six
+        # checkpoints and KeyErrors on every OPT size we need plus Llama-3.1.
+        all_names = list(config.share_part) + list(config.private_part)
+        weight_info = derive_weight_info(
+            std_model, [getattr(config, n + "_name") for n in all_names]
+        )
+        print("derived weight_info: {}".format(weight_info))
 
         # Share Part
         names = config.share_part
         for name in names:
             print("Config for {}".format(name))
-            nx, nf = ShareConfig.weight_info[short_model_name][getattr(config, name + "_name")]
+            nx, nf = weight_info[getattr(config, name + "_name")]
             num_group = model_config.num_hidden_layers // config.group_size
             rest = model_config.num_hidden_layers % config.group_size
             gs = config.group_size
@@ -162,23 +186,44 @@ def create_model(config):
         for name in names:
             print("Config for {}".format(name))
             setattr(model_config, name + "_groups", [[i] for i in range(model_config.num_hidden_layers)])
-            nx, nf = ShareConfig.weight_info[short_model_name][getattr(config, name + "_name")]
+            nx, nf = weight_info[getattr(config, name + "_name")]
             num_basis = compute_num_basis(nx, nf, 1, config.compression_ratio)
             setattr(model_config, "num_basis_" + name, num_basis)
             print("num_basis {}".format(num_basis))
 
-        if config.model_type == "llama2":
-            if "30b" in config.model_name:
-                model_config.torch_dtype = torch.float16
-            model = ShareLlamaForCausalLM(model_config)
-        elif config.model_type == "gpt2":
-            model = ShareGPT2LMHeadModel(model_config)
-        elif config.model_type == "opt":
-            model = ShareOPTForCausalLM(model_config)
-        elif config.model_type == "mistral":
-            model = ShareMistralForCausalLM(model_config)
-        else:
-            raise NotImplementedError
+        # The compressed model is built FROM SCRATCH here, fully materialised and
+        # randomly initialised before a single weight is loaded. At rho=0.60 that
+        # is ~39.6e9 params for opt-66b = 158 GB in fp32, on top of std_model --
+        # far past the 201 GB cgroup. Halving it is what makes 66B/70B possible.
+        #
+        # Upstream's `model_config.torch_dtype = torch.float16` above was a NO-OP:
+        # measured on this build, `ShareOPTForCausalLM(cfg)` returns float32 even
+        # when cfg.torch_dtype is already float16 -- direct construction uses
+        # torch.get_default_dtype() and never reads cfg.torch_dtype. Only
+        # set_default_dtype actually works, so the 30b special case never fired.
+        #
+        # This is numerically inert. group.py:71-77 does the decomposition in
+        # FLOAT64 (`w = torch.cat(w, -1).double()`, `torch.svd(w)`) reading from
+        # std_model, and emits `.float()`; run_basis_sharing.py then halves the
+        # model before evaluation. So the stored value goes fp32 -> fp16 exactly
+        # once either way -- same value, same single rounding.
+        _want = os.environ.get("BS_MODEL_DTYPE", "")
+        _prev_default = torch.get_default_dtype()
+        if _want == "float16":
+            torch.set_default_dtype(torch.float16)
+        try:
+            if config.model_type == "llama2":
+                model = ShareLlamaForCausalLM(model_config)
+            elif config.model_type == "gpt2":
+                model = ShareGPT2LMHeadModel(model_config)
+            elif config.model_type == "opt":
+                model = ShareOPTForCausalLM(model_config)
+            elif config.model_type == "mistral":
+                model = ShareMistralForCausalLM(model_config)
+            else:
+                raise NotImplementedError
+        finally:
+            torch.set_default_dtype(_prev_default)
 
         print("Model init finished!")
         if not hasattr(config, "tfs"):
@@ -194,7 +239,7 @@ def create_model(config):
                                      model_type=config.model_type,
                                      groups=getattr(model_config, name + "_groups"),
                                      name=getattr(config, name + "_name"),
-                                     step=ShareConfig.weight_info[short_model_name][getattr(config, name + "_name")][1],
+                                     step=weight_info[getattr(config, name + "_name")][1],
                                      num_basis=getattr(model_config, "num_basis_" + name),
                                      basis_name=name + "_basis",
                                      calib_path=config.calib_path,

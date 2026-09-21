@@ -34,6 +34,46 @@ def add_args():
     return args
 
 
+def derive_weight_info(model, weight_names):
+    """Read (in_features, out_features) for each weight off the loaded model.
+
+    Replaces the hand-maintained ShareConfig.weight_info table, which only
+    covered six checkpoints (llama2-7b/13b/30b, gpt2, opt-6.7b, mistral-7b) and
+    raised KeyError for anything else -- including every OPT size we need and
+    Llama-3.1. The shapes were always derivable from the model itself, and a
+    wrong hand-entered number would not raise, it would silently produce the
+    wrong num_basis.
+
+    `weight_names` are dotted paths relative to one decoder layer, e.g.
+    "self_attn.k_proj", "fc1", "mlp.down_proj".
+    """
+    import torch.nn as nn
+
+    layers = None
+    for path in ("model.decoder.layers", "model.layers", "transformer.h"):
+        obj = model
+        try:
+            for part in path.split("."):
+                obj = getattr(obj, part)
+            layers = obj
+            break
+        except AttributeError:
+            continue
+    if layers is None:
+        raise ValueError(f"cannot locate decoder layers on {type(model).__name__}")
+
+    layer = layers[0]
+    info = {}
+    for name in weight_names:
+        mod = layer
+        for part in name.split("."):
+            mod = getattr(mod, part)
+        if not isinstance(mod, nn.Linear):
+            raise TypeError(f"{name} is {type(mod).__name__}, expected nn.Linear")
+        info[name] = (mod.in_features, mod.out_features)
+    return info
+
+
 class ShareConfig:
     name_map = {
         'meta-llama/Llama-2-7b-hf': "llama2-7b",

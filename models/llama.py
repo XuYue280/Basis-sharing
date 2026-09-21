@@ -9,6 +9,37 @@ from transformers.modeling_outputs import BaseModelOutputWithPast
 from transformers.utils import logging
 from models.model_utils import build_basis_collection, Coefficient
 
+import contextlib as _contextlib
+
+
+@_contextlib.contextmanager
+def _no_dense_stack(config):
+    """Stop a parent __init__ from building a full dense decoder stack.
+
+    Every Share* class calls super().__init__(config) and then REPLACES what the
+    parent just built, so the chain
+        ShareXForCausalLM -> ShareXModel -> ShareXDecoder
+    allocates and discards THREE complete dense stacks. It is invisible without
+    walking the MRO, and it is the largest allocation in the whole pipeline:
+        opt-66b fp32  3 x 260.9 GB = 782.8 GB
+        opt-66b fp16  3 x 130.5 GB = 391.4 GB
+        Llama-3.1-70B fp16  3 x  91.3 GB = 273.8 GB
+    against a 201 GB cgroup on one GPU, or 750 GB on a whole node.
+
+    In the installed transformers, `num_hidden_layers` is read ONLY to size that
+    ModuleList -- every other attribute of OPTDecoder/LlamaModel.__init__ comes
+    from a different config field (dropout, padding_idx, vocab_size,
+    word_embed_proj_dim, hidden_size, ...). Zeroing it for the duration therefore
+    builds an empty layer list and changes nothing else, and the real Share
+    layers are constructed immediately afterwards from the restored value.
+    """
+    n = config.num_hidden_layers
+    config.num_hidden_layers = 0
+    try:
+        yield
+    finally:
+        config.num_hidden_layers = n
+
 logger = logging.get_logger(__name__)
 
 
@@ -210,7 +241,8 @@ class ShareLlamaDecoderLayer(LlamaDecoderLayer):
 
 class ShareLlamaModel(LlamaModel):
     def __init__(self, config):
-        super().__init__(config)
+        with _no_dense_stack(config):
+            super().__init__(config)
 
         if hasattr(config, "num_basis_k"):
             self.k_basis = build_basis_collection(config.k_groups, config.num_basis_k, config.hidden_size)
@@ -387,7 +419,8 @@ class ShareLlamaModel(LlamaModel):
 
 class ShareLlamaForCausalLM(LlamaForCausalLM):
     def __init__(self, config):
-        super().__init__(config)
+        with _no_dense_stack(config):
+            super().__init__(config)
         self.model = ShareLlamaModel(config)
         self.config = config
 

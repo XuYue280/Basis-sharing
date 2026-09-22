@@ -23,6 +23,9 @@ sys.path.insert(0, _REPO)
 sys.path.insert(0, _HERE)
 
 from shared_eval import evaluate_all, count_parameters
+# Timing + peak-memory probes, defined identically to the ARKS instrumentation
+# so the two sides are comparable. Measurement only; see telemetry.py.
+from telemetry import Phase, environment, rollup
 
 
 def main():
@@ -43,6 +46,13 @@ def main():
     if tok.pad_token_id is None:
         tok.pad_token = tok.eos_token
 
+    _total = Phase("total"); _total.__enter__()
+    # Basis_Sharing builds the reference model, the compressed stack and the
+    # state-dict match inside create_model, so "model load" is not separable
+    # from "compress" here the way it is for the other two. The load phase is
+    # recorded as zero-length rather than fabricated.
+    _load = Phase("model_load"); _load.__enter__(); _load.__exit__(None, None, None)
+    _compress = Phase("compress"); _compress.__enter__()
     t0 = time.perf_counter()
     if a.dense:
         from transformers import AutoModelForCausalLM
@@ -62,8 +72,11 @@ def main():
         model = model.half().to("cuda")
         after = count_parameters(model)
     compress_s = time.perf_counter() - t0
+    _compress.__exit__(None, None, None)
 
-    res = evaluate_all(model, tok, device="cuda")
+    with Phase("eval") as _eval:
+        res = evaluate_all(model, tok, device="cuda")
+    _total.__exit__(None, None, None)
     os.makedirs(os.path.dirname(a.out), exist_ok=True)
     payload = {
         "method": "basis_sharing", "model": model_id,
@@ -76,6 +89,15 @@ def main():
         "compress_seconds": compress_s,
         "ppl": {c: v["ppl"] for c, v in res.items()},
         "ppl_tokens": {c: v["ppl_tokens"] for c, v in res.items()},
+        # rollup, not _total.fields(): every nested phase resets the global CUDA
+        # peak counter, so the enclosing phase can only see the last child's
+        # peak. See telemetry.rollup.
+        "telemetry": {**_load.fields(), **_compress.fields(), **_eval.fields(),
+                      **rollup(_total, (_load, _compress, _eval))},
+        "per_corpus_cost": {c: {k: v for k, v in d.items()
+                                if k not in ("ppl", "ppl_tokens")}
+                            for c, d in res.items()},
+        "environment": environment(),
     }
     with open(a.out, "w") as fh:
         json.dump(payload, fh, indent=2)

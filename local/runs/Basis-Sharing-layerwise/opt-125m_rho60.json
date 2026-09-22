@@ -1,0 +1,29 @@
+{
+  "method": "basis_sharing",
+  "model": "facebook/opt-125m",
+  "rho_target": 0.6,
+  "compression_ratio_removed_pct": 40,
+  "dense": false,
+  "yaml": "/home/xuy280/Desktop/ICLR submission for ARKS/3 baseline/rehearsal/Basis-sharing/local/yaml/opt-125m_rho60.yaml",
+  "params_before": {
+    "total_params": 125239296,
+    "linear_params": 123543552
+  },
+  "params_after": {
+    "total_params": 129804288,
+    "linear_params": 89499648
+  },
+  "realised_total_ratio": 1.0364501569858713,
+  "realised_linear_ratio": 0.7244380346130893,
+  "compress_seconds": 137.04460969893262,
+  "ppl": {
+    "wikitext2": 76.49338534829226,
+    "ptb": 436.2725252471466,
+    "c4": 165.92614945177112
+  },
+  "ppl_tokens": {
+    "wikitext2": 286580,
+    "ptb": 96209,
+    "c4": 524032
+  }
+}

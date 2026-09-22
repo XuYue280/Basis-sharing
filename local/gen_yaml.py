@@ -82,7 +82,12 @@ def emit(model_id, rho):
     removed = round((1.0 - rho) * 100)       # rho 0.60 -> 40, rho 0.33 -> 67
     tag = f"{model_id.split('/')[-1]}_rho{int(rho*100)}"
     root = os.path.join(RUNS, tag)
-    cbs = CALIB_BS.get(model_id, 16)
+    # BS_CALIB_BS overrides the calibration micro-batch. This is a PURE MEMORY knob:
+    # calib.py:41-45 flattens the activation to (tokens, d) and accumulates
+    # `inp.T @ inp` with `+=`, so the Gram is a plain sum over tokens and the
+    # micro-batch size does not change it. Needed on cards smaller than the
+    # reference box -- the default 16 OOMs an 8 GB card even on opt-125m.
+    cbs = int(os.environ.get("BS_CALIB_BS") or CALIB_BS.get(model_id, 16))
     gate_line = f'  gate_name: "{n["gate"]}"\n' if "gate" in n else ""
     share_lines = "".join(f'    - "{x}"\n' for x in SHARE[nk])
     private_lines = "".join(f'    - "{x}"\n' for x in PRIVATE[nk])

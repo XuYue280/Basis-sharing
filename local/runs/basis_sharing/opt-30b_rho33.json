@@ -1,0 +1,127 @@
+{
+  "method": "basis_sharing",
+  "model": "facebook/opt-30b",
+  "rho_target": 0.33,
+  "compression_ratio_removed_pct": 67,
+  "dense": false,
+  "yaml": "/home/ubuntu/baselines/Basis-sharing/local/yaml/opt-30b_rho33.yaml",
+  "params_before": {
+    "total_params": 29974540288,
+    "linear_params": 29955358720
+  },
+  "params_after": {
+    "total_params": 10502696960,
+    "linear_params": 10123165696
+  },
+  "realised_total_ratio": 0.3503872572886346,
+  "realised_linear_ratio": 0.3379417282438072,
+  "compress_seconds": 23831.93345071099,
+  "ppl": {
+    "wikitext2": 18.009503202839763,
+    "ptb": 62.196557970244285,
+    "c4": 47.78311164918571
+  },
+  "ppl_tokens": {
+    "wikitext2": 286580,
+    "ptb": 96209,
+    "c4": 524032
+  },
+  "baseline": "Basis_Sharing",
+  "dtype": "float16",
+  "seed": 2023,
+  "device": "cuda",
+  "gpu": "NVIDIA H100 PCIe",
+  "package_versions": {
+    "python": "3.12.14",
+    "torch": "2.14.0+cu130",
+    "transformers": "4.45.2",
+    "datasets": "5.0.1",
+    "accelerate": "1.15.0",
+    "lm_eval": null
+  },
+  "last_updated": "2026-09-24T14:41:46",
+  "requested_compression_ratio": 0.33,
+  "dense_eval": {
+    "ppl": {},
+    "accuracy": null
+  },
+  "compressed_eval": {
+    "ppl": {
+      "wikitext2": {
+        "ppl": 18.009503202839763,
+        "tokens": 286580,
+        "dense_ppl": null,
+        "ppl_increase": null,
+        "ppl_increase_percent": null
+      },
+      "ptb": {
+        "ppl": 62.196557970244285,
+        "tokens": 96209,
+        "dense_ppl": null,
+        "ppl_increase": null,
+        "ppl_increase_percent": null
+      },
+      "c4": {
+        "ppl": 47.78311164918571,
+        "tokens": 524032,
+        "dense_ppl": null,
+        "ppl_increase": null,
+        "ppl_increase_percent": null
+      }
+    },
+    "accuracy": null
+  },
+  "dense_target_parameter_count": 29955358720,
+  "dense_non_target_parameter_count": 19181568,
+  "dense_total_parameter_count": 29974540288,
+  "compressed_target_parameter_count": 10123165696,
+  "compressed_total_parameter_count": 10502696960,
+  "dense_target_mb": 57135.3125,
+  "dense_non_target_mb": 36.5859375,
+  "dense_total_mb": 57171.8984375,
+  "compressed_target_mb": 19308.40625,
+  "compressed_total_mb": 20032.3046875,
+  "artifact_storage_mb": 19308.40625,
+  "static_parameter_storage_mb": 723.8984375,
+  "total_model_storage_mb": 20032.3046875,
+  "storage": {
+    "artifact_storage_mb": 19308.40625,
+    "static_parameter_storage_mb": 723.8984375,
+    "total_model_storage_mb": 20032.3046875
+  },
+  "dense_ppl": {
+    "wikitext2": null,
+    "ptb": null,
+    "c4": null
+  },
+  "dense_ppl_tokens": {
+    "wikitext2": null,
+    "ptb": null,
+    "c4": null
+  },
+  "ppl_increase": {
+    "wikitext2": null,
+    "ptb": null,
+    "c4": null
+  },
+  "ppl_increase_percent": {
+    "wikitext2": null,
+    "ptb": null,
+    "c4": null
+  },
+  "layers_evaluated": 48,
+  "matrices_evaluated": 480,
+  "artifact_bits_per_compressed_parameter": 16.0,
+  "total_model_bits_per_parameter": 16.0,
+  "model_load_seconds": 0.21985027598566376,
+  "artifact_load_seconds": 0.0,
+  "reconstruction_seconds": 23831.93345071099,
+  "metric_seconds": 272.5097240610048,
+  "inference_seconds": 272.5097240610048,
+  "dense_inference_seconds": null,
+  "total_seconds": 24100.944276249007,
+  "peak_cpu_rss_mb": 97058.921875,
+  "peak_cpu_rss_increase_mb": 96331.609375,
+  "peak_cuda_allocated_mb": 77868.56494140625,
+  "peak_cuda_reserved_mb": 78990.0
+}

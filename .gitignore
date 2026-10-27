@@ -29,3 +29,25 @@ core.*
 *.bak
 *.bak[0-9]
 *.orig
+
+# ---------------------------------------------------------------------------
+# Generated results and plots. The result JSONs are caught by the local/runs/
+# rule above, never by a *.json pattern -- and *.yaml is deliberately absent
+# too: the 52 tracked YAMLs are the experiment configs, not output. Only
+# local/yaml/ (machine-specific, generated) is ignored.
+# ---------------------------------------------------------------------------
+local/plots/
+results/
+plots/
+figures/
+
+*.png
+*.pdf
+*.svg
+*.csv
+*.jsonl
+*.npz
+*.npy
+
+# throwaway probes written while debugging; they carry absolute paths
+.probe_*.py
